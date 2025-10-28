@@ -30,7 +30,6 @@
   <h1>畢業晚會許願牆</h1>
   <p class="sub">先填表單送出你的願望，通過審核後會出現在下面的牆面。</p>
 
-  <!-- Google 表單嵌入 -->
   <div style="border:1px solid var(--bd);border-radius:14px;overflow:hidden;background:#fff">
     <iframe
       src="https://docs.google.com/forms/d/e/1FAIpQLSf1MH78YWa2CKkk88zn8dOQ9I4LNIw1RyMC49mECKlp9x3ZJw/viewform?embedded=true"
@@ -57,8 +56,8 @@
 </div>
 
 <script>
-/* 你的 Apps Script Web App /exec 網址（不加 callback，程式會自動帶） */
-const API = 'https://script.google.com/macros/s/AKfycbxXeJZzMR4n2rHSKHSaI-NVEa_hB80GOoHT9et8ZGzYY4FJNtcjgqQD55F3-n02_dYRKQ/exec';
+/* Apps Script /exec 網址（不加 callback） */
+const API = 'https://script.google.com/macros/s/AKfycby50qefFtzsgoZ-uAIiOhFTGpdj5vfvrMCzbWADKhDHVVKpb1pztnnRQ3pd1fZ2NUa3zQ/exec';
 
 const list = document.getElementById('list');
 const q = document.getElementById('q');
@@ -68,14 +67,12 @@ const empty = document.getElementById('empty');
 const refreshBtn = document.getElementById('refresh');
 
 let wishes = [], filtered = [];
-const likes = JSON.parse(localStorage.getItem('likes') || '{}');
+const likes = JSON.parse(localStorage.getItem('likes') || '{}');   // 本機累計值（顯示用）
+const liked = JSON.parse(localStorage.getItem('liked') || '{}');   // 本機是否已按過
 
 function escapeHtml(str){
-  return (str||'').replace(/[&<>"']/g, s => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  })[s]);
+  return (str||'').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
 }
-
 function render(){
   list.innerHTML = '';
   if(filtered.length === 0){
@@ -89,7 +86,9 @@ function render(){
   filtered.forEach(w=>{
     const div = document.createElement('div');
     div.className = 'card' + (w.pinned ? ' pinned' : '');
-    const likeCnt = likes[w.id] || 0;
+    const localCnt = likes[w.id] || 0;
+    const totalCnt = (w.likeCount || 0) + localCnt;
+    const disabled = liked[w.id] ? 'disabled' : '';
     div.innerHTML =
       '<div class="row">' +
         '<strong>' + escapeHtml(w.name || '匿名') + '</strong>' +
@@ -98,12 +97,11 @@ function render(){
       '<p style="white-space:pre-wrap;margin:8px 0 12px 0">' + escapeHtml(w.content || '') + '</p>' +
       '<div class="row">' +
         '<small style="color:var(--muted)">' + (w.created_at ? new Date(w.created_at).toLocaleString() : '') + '</small>' +
-        '<button class="like" data-id="' + w.id + '">👍 ' + likeCnt + '</button>' +
+        '<button class="like" data-id="' + w.id + '" ' + disabled + '>👍 ' + totalCnt + '</button>' +
       '</div>';
     list.appendChild(div);
   });
 }
-
 function applyFilter(){
   const term = (q.value || '').toLowerCase();
   const c = cat.value;
@@ -119,49 +117,64 @@ function applyFilter(){
   render();
 }
 
-/* JSONP 方式載入（避免 CORS） */
+/* JSONP 讀取清單 */
+function jsonp(url, cb){
+  const name = 'jsonp_' + Math.random().toString(36).slice(2);
+  window[name] = function(data){
+    try { cb(null, data); } finally {
+      delete window[name];
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+    }
+  };
+  const script = document.createElement('script');
+  script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + name;
+  script.onerror = function(){ cb(new Error('JSONP failed')); };
+  document.body.appendChild(script);
+}
 function load(){
   loading.style.display = 'block';
   list.style.display = 'none';
   empty.style.display = 'none';
-
-  const cbName = 'jsonp_' + Math.random().toString(36).substring(2);
-  window[cbName] = function(data){
-    try {
-      if(!data || !data.wishes){
-        empty.textContent = '沒有資料或回傳格式錯誤。';
-        empty.style.display = 'block';
-        return;
-      }
-      wishes = data.wishes;
-      applyFilter();
-    } finally {
-      // 清理
-      delete window[cbName];
-      if (script && script.parentNode) script.parentNode.removeChild(script);
-      loading.style.display = 'none';
-    }
-  };
-
-  const script = document.createElement('script');
-  script.src = API + (API.includes('?') ? '&' : '?') + 'callback=' + cbName;
-  script.onerror = function(){
+  jsonp(API, function(err, data){
     loading.style.display = 'none';
-    empty.textContent = '資料載入失敗，請稍後再試或檢查 JSON URL。';
-    empty.style.display = 'block';
-    delete window[cbName];
-    if (script && script.parentNode) script.parentNode.removeChild(script);
-  };
-  document.body.appendChild(script);
+    if (err || !data || !data.wishes) {
+      empty.textContent = '資料載入失敗，請稍後再試或檢查 JSON URL。';
+      empty.style.display = 'block';
+      return;
+    }
+    wishes = data.wishes;
+    applyFilter();
+  });
+}
+
+/* JSONP 送出按讚（全場共用） */
+function sendLike(id, buttonEl){
+  if (liked[id]) return; // 本機防重
+  // 先立即更新本地顯示
+  likes[id] = (likes[id] || 0) + 1;
+  localStorage.setItem('likes', JSON.stringify(likes));
+  liked[id] = true;
+  localStorage.setItem('liked', JSON.stringify(liked));
+  // 更新按鈕數字
+  const current = parseInt(buttonEl.textContent.replace(/[^\d]/g,'')) || 0;
+  buttonEl.textContent = '👍 ' + (current + 1);
+  buttonEl.setAttribute('disabled','');
+
+  // 通知後端累加（不受 CORS）
+  jsonp(API + '?action=like&id=' + encodeURIComponent(id), function(err, res){
+    // 不管成功失敗，前端顯示已更新；若想嚴謹可在 err 時回滾
+    if (res && res.ok) {
+      // 可選：以後重新 load 時會拿到最新版 likeCount
+    }
+  });
 }
 
 /* 事件 */
 document.addEventListener('click', function(e){
   if(e.target.classList.contains('like')){
     const id = e.target.getAttribute('data-id');
-    likes[id] = (likes[id]||0) + 1;
-    localStorage.setItem('likes', JSON.stringify(likes));
-    e.target.textContent = '👍 ' + likes[id];
+    if (liked[id]) return; // 已按過
+    sendLike(id, e.target);
   }
 });
 q.addEventListener('input', applyFilter);
