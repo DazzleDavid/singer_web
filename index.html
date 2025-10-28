@@ -30,7 +30,7 @@
   <h1>畢業晚會許願牆</h1>
   <p class="sub">先填表單送出你的願望，通過審核後會出現在下面的牆面。</p>
 
-  <!-- 這裡嵌入你的 Google 表單 -->
+  <!-- Google 表單嵌入 -->
   <div style="border:1px solid var(--bd);border-radius:14px;overflow:hidden;background:#fff">
     <iframe
       src="https://docs.google.com/forms/d/e/1FAIpQLSf1MH78YWa2CKkk88zn8dOQ9I4LNIw1RyMC49mECKlp9x3ZJw/viewform?embedded=true"
@@ -57,8 +57,8 @@
 </div>
 
 <script>
-/* ✅ 這裡改成你的 Apps Script JSONP 網址 */
-const API = 'https://script.google.com/macros/s/AKfycbw_0m3rBY9eMgejow91pMTRtZ_HzrukKKsitejby8_xJwQV5MwdfZoiu3mA8zhHSf-NFg/exec';
+/* 你的 Apps Script Web App /exec 網址（不加 callback，程式會自動帶） */
+const API = 'https://script.google.com/macros/s/AKfycbxXeJZzMR4n2rHSKHSaI-NVEa_hB80GOoHT9et8ZGzYY4FJNtcjgqQD55F3-n02_dYRKQ/exec';
 
 const list = document.getElementById('list');
 const q = document.getElementById('q');
@@ -70,7 +70,11 @@ const refreshBtn = document.getElementById('refresh');
 let wishes = [], filtered = [];
 const likes = JSON.parse(localStorage.getItem('likes') || '{}');
 
-function escapeHtml(str){return (str||'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]))}
+function escapeHtml(str){
+  return (str||'').replace(/[&<>"']/g, s => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[s]);
+}
 
 function render(){
   list.innerHTML = '';
@@ -86,17 +90,16 @@ function render(){
     const div = document.createElement('div');
     div.className = 'card' + (w.pinned ? ' pinned' : '');
     const likeCnt = likes[w.id] || 0;
-    div.innerHTML = `
-      <div class="row">
-        <strong>${escapeHtml(w.name || '匿名')}</strong>
-        <span class="pill">${escapeHtml(w.category || '其他')}</span>
-      </div>
-      <p style="white-space:pre-wrap;margin:8px 0 12px 0">${escapeHtml(w.content || '')}</p>
-      <div class="row">
-        <small style="color:var(--muted)">${w.created_at ? new Date(w.created_at).toLocaleString() : ''}</small>
-        <button class="like" data-id="${w.id}">👍 ${likeCnt}</button>
-      </div>
-    `;
+    div.innerHTML =
+      '<div class="row">' +
+        '<strong>' + escapeHtml(w.name || '匿名') + '</strong>' +
+        '<span class="pill">' + escapeHtml(w.category || '其他') + '</span>' +
+      '</div>' +
+      '<p style="white-space:pre-wrap;margin:8px 0 12px 0">' + escapeHtml(w.content || '') + '</p>' +
+      '<div class="row">' +
+        '<small style="color:var(--muted)">' + (w.created_at ? new Date(w.created_at).toLocaleString() : '') + '</small>' +
+        '<button class="like" data-id="' + w.id + '">👍 ' + likeCnt + '</button>' +
+      '</div>';
     list.appendChild(div);
   });
 }
@@ -106,14 +109,17 @@ function applyFilter(){
   const c = cat.value;
   filtered = wishes.filter(w=>{
     const okCat = !c || (w.category || '') === c;
-    const okText = !term || (w.content || '').toLowerCase().includes(term) || (w.name || '').toLowerCase().includes(term);
+    const okText = !term
+      || (w.content || '').toLowerCase().includes(term)
+      || (w.name || '').toLowerCase().includes(term);
     return okCat && okText;
   });
-  filtered.sort((a,b)=> (Number(b.pinned) - Number(a.pinned)) || (new Date(b.created_at || 0) - new Date(a.created_at || 0)));
+  filtered.sort((a,b)=> (Number(b.pinned) - Number(a.pinned))
+    || (new Date(b.created_at || 0) - new Date(a.created_at || 0)));
   render();
 }
 
-/* ✅ 改成 JSONP 方式載入（無 CORS 問題） */
+/* JSONP 方式載入（避免 CORS） */
 function load(){
   loading.style.display = 'block';
   list.style.display = 'none';
@@ -121,34 +127,38 @@ function load(){
 
   const cbName = 'jsonp_' + Math.random().toString(36).substring(2);
   window[cbName] = function(data){
-    delete window[cbName];
-    document.body.removeChild(script);
-    loading.style.display = 'none';
-
-    if(!data || !data.wishes){
-      empty.textContent = '沒有資料或回傳格式錯誤。';
-      empty.style.display = 'block';
-      return;
+    try {
+      if(!data || !data.wishes){
+        empty.textContent = '沒有資料或回傳格式錯誤。';
+        empty.style.display = 'block';
+        return;
+      }
+      wishes = data.wishes;
+      applyFilter();
+    } finally {
+      // 清理
+      delete window[cbName];
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+      loading.style.display = 'none';
     }
-
-    wishes = data.wishes;
-    applyFilter();
   };
 
   const script = document.createElement('script');
-  script.src = `${API}?callback=${cbName}`;
-  script.onerror = ()=>{
+  script.src = API + (API.includes('?') ? '&' : '?') + 'callback=' + cbName;
+  script.onerror = function(){
     loading.style.display = 'none';
     empty.textContent = '資料載入失敗，請稍後再試或檢查 JSON URL。';
     empty.style.display = 'block';
+    delete window[cbName];
+    if (script && script.parentNode) script.parentNode.removeChild(script);
   };
   document.body.appendChild(script);
 }
 
 /* 事件 */
-document.addEventListener('click', e=>{
+document.addEventListener('click', function(e){
   if(e.target.classList.contains('like')){
-    const id = e.target.dataset.id;
+    const id = e.target.getAttribute('data-id');
     likes[id] = (likes[id]||0) + 1;
     localStorage.setItem('likes', JSON.stringify(likes));
     e.target.textContent = '👍 ' + likes[id];
@@ -158,6 +168,7 @@ q.addEventListener('input', applyFilter);
 cat.addEventListener('change', applyFilter);
 refreshBtn.addEventListener('click', load);
 
+/* 首次載入 */
 load();
 </script>
 </body>
