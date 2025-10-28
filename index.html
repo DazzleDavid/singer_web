@@ -30,14 +30,12 @@
   <h1>畢業晚會許願牆</h1>
   <p class="sub">先填表單送出你的願望，通過審核後會出現在下面的牆面。</p>
 
-  <!-- 1) 這裡嵌入你的 Google 表單 *已發佈* 連結 -->
+  <!-- 這裡嵌入你的 Google 表單 -->
   <div style="border:1px solid var(--bd);border-radius:14px;overflow:hidden;background:#fff">
     <iframe
       src="https://docs.google.com/forms/d/e/1FAIpQLSf1MH78YWa2CKkk88zn8dOQ9I4LNIw1RyMC49mECKlp9x3ZJw/viewform?embedded=true"
       width="100%" height="640" frameborder="0" marginheight="0" marginwidth="0"
       title="畢業晚會許願表單">載入中…</iframe>
-      <!-- <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSf1MH78YWa2CKkk88zn8dOQ9I4LNIw1RyMC49mECKlp9x3ZJw/viewform?embedded=true" 
-      width="640" height="1217" frameborder="0" marginheight="0" marginwidth="0">載入中…</iframe> -->
   </div>
 
   <hr style="margin:24px 0">
@@ -59,9 +57,8 @@
 </div>
 
 <script>
-// 2) 這裡改成你的 Apps Script Web App JSON URL
-const API = 'https://script.googleusercontent.com/macros/echo?user_content_key=AehSKLjODUbuC9OBmpCI0agiIbV5OxhcM3F8KEEVXwn9WpDyLwCS542tJTEjlW5H-FlpDJLVPCpBAnZIFDWk6HZ4iot20wGqQpyN-8_12k4_fArzxWLadn-_pAlaUuXFbUvaNpFR6RokJfeWS6ydeSY-4QZf24mQDpFPGp44OOZdrNJUQkUU4xRuVPdTH0yLxB8SMM85OSQYsIqIa0kB-X2ZS3e_U3YPGoxcNC2wJD_YqdDXFokTN9bB3tawOJGTzQ&lib=M8Ty1pCxAYbmM8gtyW14ZA9UUMK94C94n
-';
+/* ✅ 這裡改成你的 Apps Script JSONP 網址 */
+const API = 'https://script.google.com/macros/s/AKfycbw_0m3rBY9eMgejow91pMTRtZ_HzrukKKsitejby8_xJwQV5MwdfZoiu3mA8zhHSf-NFg/exec';
 
 const list = document.getElementById('list');
 const q = document.getElementById('q');
@@ -116,25 +113,39 @@ function applyFilter(){
   render();
 }
 
-async function load(){
-  try{
-    loading.style.display = 'block';
-    list.style.display = 'none';
-    empty.style.display = 'none';
-    const res = await fetch(API, {cache:'no-store'});
-    if(!res.ok) throw new Error('載入失敗');
-    const data = await res.json();
-    wishes = (data && data.wishes) ? data.wishes : [];
+/* ✅ 改成 JSONP 方式載入（無 CORS 問題） */
+function load(){
+  loading.style.display = 'block';
+  list.style.display = 'none';
+  empty.style.display = 'none';
+
+  const cbName = 'jsonp_' + Math.random().toString(36).substring(2);
+  window[cbName] = function(data){
+    delete window[cbName];
+    document.body.removeChild(script);
+    loading.style.display = 'none';
+
+    if(!data || !data.wishes){
+      empty.textContent = '沒有資料或回傳格式錯誤。';
+      empty.style.display = 'block';
+      return;
+    }
+
+    wishes = data.wishes;
     applyFilter();
-  }catch(err){
-    console.error(err);
+  };
+
+  const script = document.createElement('script');
+  script.src = `${API}?callback=${cbName}`;
+  script.onerror = ()=>{
+    loading.style.display = 'none';
     empty.textContent = '資料載入失敗，請稍後再試或檢查 JSON URL。';
     empty.style.display = 'block';
-  }finally{
-    loading.style.display = 'none';
-  }
+  };
+  document.body.appendChild(script);
 }
 
+/* 事件 */
 document.addEventListener('click', e=>{
   if(e.target.classList.contains('like')){
     const id = e.target.dataset.id;
