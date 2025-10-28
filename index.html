@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>畢業晚會｜許願牆</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/modern-normalize/modern-normalize.css">
+<style>
+  :root{--bd:#e5e7eb;--muted:#6b7280}
+  body{font-family:system-ui,-apple-system,"Noto Sans TC",Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;background:#fafafa;color:#111827}
+  .wrap{max-width:980px;margin:0 auto;padding:24px}
+  h1{font-size:28px;margin:0 0 6px 0}
+  .sub{color:var(--muted);margin:0 0 18px 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+  .card{border:1px solid var(--bd);border-radius:14px;padding:14px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.02)}
+  .pill{font-size:12px;border:1px solid var(--bd);border-radius:999px;padding:2px 8px;margin-left:6px}
+  .like{cursor:pointer;border:1px solid var(--bd);border-radius:10px;padding:4px 8px;font-size:12px;background:#fff}
+  .pinned{border-color:#f59e0b}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  input,select{padding:8px;border:1px solid var(--bd);border-radius:10px;background:#fff}
+  .empty{border:1px dashed var(--bd);border-radius:14px;padding:24px;text-align:center;color:var(--muted);background:#fff}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .spinner{width:26px;height:26px;border:3px solid var(--bd);border-top-color:#111827;border-radius:50%;animation:spin 1s linear infinite;margin:12px auto}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>畢業晚會許願牆</h1>
+  <p class="sub">先填表單送出你的願望，通過審核後會出現在下面的牆面。</p>
+
+  <!-- 1) 這裡嵌入你的 Google 表單 *已發佈* 連結 -->
+  <div style="border:1px solid var(--bd);border-radius:14px;overflow:hidden;background:#fff">
+    <iframe
+      src="https://docs.google.com/forms/d/e/1FAIpQLSf1MH78YWa2CKkk88zn8dOQ9I4LNIw1RyMC49mECKlp9x3ZJw/viewform?embedded=true"
+      width="100%" height="640" frameborder="0" marginheight="0" marginwidth="0"
+      title="畢業晚會許願表單">載入中…</iframe>
+      <!-- <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSf1MH78YWa2CKkk88zn8dOQ9I4LNIw1RyMC49mECKlp9x3ZJw/viewform?embedded=true" 
+      width="640" height="1217" frameborder="0" marginheight="0" marginwidth="0">載入中…</iframe> -->
+  </div>
+
+  <hr style="margin:24px 0">
+
+  <div class="toolbar">
+    <label class="sr-only" for="q">搜尋</label>
+    <input id="q" placeholder="搜尋關鍵字… (內容或署名)">
+    <label class="sr-only" for="cat">類別</label>
+    <select id="cat">
+      <option value="">全部類別</option>
+      <option>祝福</option><option>橋段</option><option>感謝</option><option>點歌</option><option>其他</option>
+    </select>
+    <button id="refresh" class="like" title="重新整理">↻ 重新整理</button>
+  </div>
+
+  <div id="loading" class="spinner" aria-label="載入中" role="status"></div>
+  <div id="list" class="grid" style="margin-top:16px;display:none"></div>
+  <div id="empty" class="empty" style="display:none">目前還沒有公開的願望，或關鍵字沒有匹配結果。</div>
+</div>
+
+<script>
+// 2) 這裡改成你的 Apps Script Web App JSON URL
+const API = 'https://script.google.com/macros/s/AKfycbw8OVjmupBizhuKI2Nmm_-POJ-5B9mAiUsBSoSZRZkGnFwCF6TKp8zNbzXtmHkOx0C2Cw/exec';
+
+const list = document.getElementById('list');
+const q = document.getElementById('q');
+const cat = document.getElementById('cat');
+const loading = document.getElementById('loading');
+const empty = document.getElementById('empty');
+const refreshBtn = document.getElementById('refresh');
+
+let wishes = [], filtered = [];
+const likes = JSON.parse(localStorage.getItem('likes') || '{}');
+
+function escapeHtml(str){return (str||'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]))}
+
+function render(){
+  list.innerHTML = '';
+  if(filtered.length === 0){
+    list.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  list.style.display = 'grid';
+
+  filtered.forEach(w=>{
+    const div = document.createElement('div');
+    div.className = 'card' + (w.pinned ? ' pinned' : '');
+    const likeCnt = likes[w.id] || 0;
+    div.innerHTML = `
+      <div class="row">
+        <strong>${escapeHtml(w.name || '匿名')}</strong>
+        <span class="pill">${escapeHtml(w.category || '其他')}</span>
+      </div>
+      <p style="white-space:pre-wrap;margin:8px 0 12px 0">${escapeHtml(w.content || '')}</p>
+      <div class="row">
+        <small style="color:var(--muted)">${w.created_at ? new Date(w.created_at).toLocaleString() : ''}</small>
+        <button class="like" data-id="${w.id}">👍 ${likeCnt}</button>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function applyFilter(){
+  const term = (q.value || '').toLowerCase();
+  const c = cat.value;
+  filtered = wishes.filter(w=>{
+    const okCat = !c || (w.category || '') === c;
+    const okText = !term || (w.content || '').toLowerCase().includes(term) || (w.name || '').toLowerCase().includes(term);
+    return okCat && okText;
+  });
+  filtered.sort((a,b)=> (Number(b.pinned) - Number(a.pinned)) || (new Date(b.created_at || 0) - new Date(a.created_at || 0)));
+  render();
+}
+
+async function load(){
+  try{
+    loading.style.display = 'block';
+    list.style.display = 'none';
+    empty.style.display = 'none';
+    const res = await fetch(API, {cache:'no-store'});
+    if(!res.ok) throw new Error('載入失敗');
+    const data = await res.json();
+    wishes = (data && data.wishes) ? data.wishes : [];
+    applyFilter();
+  }catch(err){
+    console.error(err);
+    empty.textContent = '資料載入失敗，請稍後再試或檢查 JSON URL。';
+    empty.style.display = 'block';
+  }finally{
+    loading.style.display = 'none';
+  }
+}
+
+document.addEventListener('click', e=>{
+  if(e.target.classList.contains('like')){
+    const id = e.target.dataset.id;
+    likes[id] = (likes[id]||0) + 1;
+    localStorage.setItem('likes', JSON.stringify(likes));
+    e.target.textContent = '👍 ' + likes[id];
+  }
+});
+q.addEventListener('input', applyFilter);
+cat.addEventListener('change', applyFilter);
+refreshBtn.addEventListener('click', load);
+
+load();
+</script>
+</body>
+</html>
